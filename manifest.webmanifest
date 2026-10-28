@@ -1,0 +1,16 @@
+{
+  "name": "PiPi 工作台",
+  "short_name": "PiPi 工作台",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#fff0f7",
+  "theme_color": "#fff0f7",
+  "icons": [
+    {
+      "src": "./icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
