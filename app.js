@@ -97,15 +97,15 @@ function rainForecastText(hourly, currentTime) {
     time,
     chance: Number(hourly?.precipitation_probability?.[index] ?? 0)
   })).filter(hour => !currentTime || hour.time >= currentTime).slice(0,12);
-  if (!upcoming.length) return '未来 12 小时降雨预报暂不可用';
+  if (!upcoming.length) return '12 小时降雨暂不可用';
   const highestChance = Math.max(...upcoming.map(hour => hour.chance));
   const firstRainIndex = upcoming.findIndex(hour => hour.chance >= 20);
-  if (firstRainIndex < 0) return `未来 12 小时暂无下雨预报（最高 ${highestChance}%）`;
+  if (firstRainIndex < 0) return `12 小时无雨（${highestChance}%）`;
   let lastRainIndex=firstRainIndex;
   while(upcoming[lastRainIndex+1]?.chance>=20)lastRainIndex++;
   const start=upcoming[firstRainIndex].time.slice(11,16),end=upcoming[lastRainIndex+1]?.time.slice(11,16)||nextHourLabel(upcoming[lastRainIndex].time);
   const peak=Math.max(...upcoming.slice(firstRainIndex,lastRainIndex+1).map(hour=>hour.chance));
-  return `未来 12 小时：${start}–${end} 有雨，最高 ${peak}%`;
+  return `12 小时：${start}–${end} 有雨 ${peak}%`;
 }
 function showWeather({ current, hourly }, city) {
   const info = weatherInfo(current?.weather_code);
