@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pipi-workbench-v2';
+const CACHE_NAME = 'pipi-workbench-v4';
 const APP_ASSETS = [
   './',
   './index.html',
