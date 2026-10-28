@@ -15,6 +15,7 @@ const PALETTE = [
 const TEMPORARY_COLOR_INDEX = 6;
 const ICONS = ['💡','🧩','✏️','💬','📚','🎨','📊','🌱','🍜','🍰','☕','🍱','🏍️','🚗','✈️','🏃','🧘','🎵','🎮','📷','🛍️','💻','📞','🧹','🐾','❤️'];
 const STORE = 'pipi-workbench-v1';
+const BACKUP_STORE = 'pipi-workbench-backup-v1';
 const dateKey = (date = new Date()) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -43,28 +44,30 @@ function seed() {
     hiddenFixed: {}
   };
 }
-let state;
-try { state = JSON.parse(localStorage.getItem(STORE)) || seed(); } catch { state = seed(); }
-if (!state.categories.some(category => category.name === '运动健身')) { state.categories.push({ id:'c4', name:'运动健身', icon:'🏃', time:'18:00', color:4 }); localStorage.setItem(STORE, JSON.stringify(state)); }
+function readSavedState(key){try{const saved=JSON.parse(localStorage.getItem(key));return saved&&Array.isArray(saved.categories)&&saved.tasks&&typeof saved.tasks==='object'?saved:null;}catch{return null;}}
+function persistState(nextState){try{const serialized=JSON.stringify(nextState);localStorage.setItem(BACKUP_STORE,serialized);localStorage.setItem(STORE,serialized);}catch{}}
+function loadState(){const primary=readSavedState(STORE);if(primary)return primary;const backup=readSavedState(BACKUP_STORE);if(backup){persistState(backup);return backup;}const initial=seed();persistState(initial);return initial;}
+let state=loadState();
+const save = () => persistState(state);
+if (!state.categories.some(category => category.name === '运动健身')) { state.categories.push({ id:'c4', name:'运动健身', icon:'🏃', time:'18:00', color:4 }); save(); }
 const ARCHIVE_MIGRATION = 'pipi-archive-legacy-categories-v1';
 if (!localStorage.getItem(ARCHIVE_MIGRATION)) {
   const retiredNames = new Set(['多少', '环境']);
   state.categories = state.categories.map(category => retiredNames.has(category.name) ? { ...category, archived:true } : category);
-  localStorage.setItem(STORE, JSON.stringify(state));
+  save();
   localStorage.setItem(ARCHIVE_MIGRATION, 'true');
 }
 const existingTemporaryCategory = state.categories.find(category => category.id === 'temp');
-if (existingTemporaryCategory && existingTemporaryCategory.color !== TEMPORARY_COLOR_INDEX) { existingTemporaryCategory.color = TEMPORARY_COLOR_INDEX; localStorage.setItem(STORE, JSON.stringify(state)); }
+if (existingTemporaryCategory && existingTemporaryCategory.color !== TEMPORARY_COLOR_INDEX) { existingTemporaryCategory.color = TEMPORARY_COLOR_INDEX; save(); }
 let reportPeriod = 'week', calendarPeriod = 'week', modalMode = null, editCategoryId = null, pickedColor = 0;
 let calendarCursor = new Date(), calendarTaskDate = null;
-const save = () => localStorage.setItem(STORE, JSON.stringify(state));
 const byId = (id) => document.getElementById(id);
 let soundContext, soundUnlockPromise=null, soundPrimed=false;
 function getSoundContext(){const AudioContextClass=window.AudioContext||window.webkitAudioContext;if(!AudioContextClass)return null;if(!soundContext||soundContext.state==='closed'){soundContext=new AudioContextClass();soundPrimed=false;}return soundContext;}
 function primeSound(context){if(soundPrimed||context?.state!=='running')return;soundPrimed=true;const oscillator=context.createOscillator(),gain=context.createGain(),now=context.currentTime;gain.gain.setValueAtTime(.00001,now);oscillator.connect(gain).connect(context.destination);oscillator.start(now);oscillator.stop(now+.02);}
-function scheduleSound(context,kind){const notes={complete:[[659,0,.1],[880,.11,.11],[1047,.24,.22]],undo:[[523,0,.1],[392,.12,.14]],modal:[[587,0,.1],[784,.11,.16]],confirm:[[440,0,.13],[349,.15,.18]]}[kind];if(!notes||context.state!=='running')return;const now=context.currentTime+.015,volume=kind==='complete'?.18:kind==='undo'?.14:.13;notes.forEach(([frequency,offset,duration])=>{const oscillator=context.createOscillator(),gain=context.createGain(),start=now+offset;oscillator.type=kind==='confirm'?'triangle':'sine';oscillator.frequency.setValueAtTime(frequency,start);gain.gain.setValueAtTime(.0001,start);gain.gain.exponentialRampToValueAtTime(volume,start+.018);gain.gain.exponentialRampToValueAtTime(.0001,start+duration);oscillator.connect(gain).connect(context.destination);oscillator.start(start);oscillator.stop(start+duration+.035);});}
+function scheduleSound(context,kind){const notes={complete:[[659,0,.13],[880,.14,.14],[1047,.3,.24]],undo:[[523,0,.12],[392,.14,.17]],modal:[[587,0,.12],[784,.13,.18]],confirm:[[440,0,.15],[349,.17,.2]],navigate:[[740,0,.1],[988,.11,.15]]}[kind];if(!notes||context.state==='closed')return;const now=context.currentTime+.02,volume=kind==='complete'?.23:kind==='undo'?.18:kind==='navigate'?.16:.18;notes.forEach(([frequency,offset,duration])=>{const oscillator=context.createOscillator(),gain=context.createGain(),start=now+offset;oscillator.type=kind==='complete'||kind==='navigate'?'triangle':'sine';oscillator.frequency.setValueAtTime(frequency,start);gain.gain.setValueAtTime(.0001,start);gain.gain.exponentialRampToValueAtTime(volume,start+.02);gain.gain.exponentialRampToValueAtTime(.0001,start+duration);oscillator.connect(gain).connect(context.destination);oscillator.start(start);oscillator.stop(start+duration+.04);});}
 function unlockSound(){try{const context=getSoundContext();if(!context)return Promise.resolve();if(context.state==='running'){primeSound(context);return Promise.resolve();}if(!soundUnlockPromise)soundUnlockPromise=context.resume().then(()=>primeSound(context)).catch(()=>{}).finally(()=>{soundUnlockPromise=null;});return soundUnlockPromise;}catch{return Promise.resolve();}}
-function playSound(kind){try{const context=getSoundContext();if(!context)return;if(context.state==='running'){scheduleSound(context,kind);return;}unlockSound().then(()=>scheduleSound(context,kind));}catch{}}
+function playSound(kind){if(kind==='navigate')return;try{const context=getSoundContext();if(!context)return;scheduleSound(context,kind);if(context.state!=='running')unlockSound();}catch{}}
 document.addEventListener('pointerdown',unlockSound,{passive:true,capture:true});
 document.addEventListener('touchend',unlockSound,{passive:true,capture:true});
 document.addEventListener('keydown',unlockSound,{passive:true,capture:true});
@@ -87,17 +90,22 @@ const weatherInfo = (code) => {
   if ([95, 96, 99].includes(code)) return { icon:'⛈️', label:'可能有雷雨' };
   return { icon:'🌤️', label:'天气不错' };
 };
+function nextHourLabel(time){const hour=Number(time.slice(11,13));return `${String((hour+1)%24).padStart(2,'0')}:00`;}
 function rainForecastText(hourly, currentTime) {
   const times = hourly?.time || [];
-  const today = (currentTime || times[0] || '').slice(0, 10);
-  const remaining = times.map((time, index) => ({
+  const upcoming = times.map((time, index) => ({
     time,
     chance: Number(hourly?.precipitation_probability?.[index] ?? 0)
-  })).filter(hour => hour.time.startsWith(today) && (!currentTime || hour.time >= currentTime));
-  if (!remaining.length) return '今天的降雨预报暂不可用';
-  const firstRain = remaining.find(hour => hour.chance >= 20);
-  if (firstRain) return `${firstRain.time.slice(11, 16)} 有雨 ${firstRain.chance}%`;
-  return '今天暂无下雨预报';
+  })).filter(hour => !currentTime || hour.time >= currentTime).slice(0,12);
+  if (!upcoming.length) return '未来 12 小时降雨预报暂不可用';
+  const highestChance = Math.max(...upcoming.map(hour => hour.chance));
+  const firstRainIndex = upcoming.findIndex(hour => hour.chance >= 20);
+  if (firstRainIndex < 0) return `未来 12 小时暂无下雨预报（最高 ${highestChance}%）`;
+  let lastRainIndex=firstRainIndex;
+  while(upcoming[lastRainIndex+1]?.chance>=20)lastRainIndex++;
+  const start=upcoming[firstRainIndex].time.slice(11,16),end=upcoming[lastRainIndex+1]?.time.slice(11,16)||nextHourLabel(upcoming[lastRainIndex].time);
+  const peak=Math.max(...upcoming.slice(firstRainIndex,lastRainIndex+1).map(hour=>hour.chance));
+  return `未来 12 小时：${start}–${end} 有雨，最高 ${peak}%`;
 }
 function showWeather({ current, hourly }, city) {
   const info = weatherInfo(current?.weather_code);
@@ -112,7 +120,7 @@ function weatherUnavailable() {
 }
 function loadWeather(location = WEATHER_LOCATION) {
   const { latitude, longitude, city } = location;
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&hourly=precipitation_probability&timezone=auto&forecast_days=1`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&hourly=precipitation_probability&timezone=auto&forecast_days=2`;
   fetch(url).then(response => response.ok ? response.json() : Promise.reject()).then(data => showWeather(data, city)).catch(weatherUnavailable);
 }
 function startWeather() { loadWeather(); }
@@ -127,7 +135,7 @@ function ensureFixedTasks(key) {
 function defaultTaskName(name) { return ({'内容创作':'完成今日内容创作','项目推进':'推进手头项目','学习充电':'学习与复盘'}[name] || `完成${name}`); }
 function formatDateHeader() { const d = new Date(); byId('today-date').textContent = `${zhDate(d)} · 星期${dayName(d)}`; }
 function renderToday() {
-  ensureFixedTasks(dateKey()); formatDateHeader(); const list = byId('task-list'); const tasks = taskForDay(dateKey()).slice().sort((a,b)=>(Number(a.done)-Number(b.done))||(Number(b.categoryId==='temp')-Number(a.categoryId==='temp'))||a.time.localeCompare(b.time)); document.querySelector('.app-shell').classList.toggle('today-scroll-locked',tasks.length<=4);
+  ensureFixedTasks(dateKey()); formatDateHeader(); const list = byId('task-list'); const tasks = taskForDay(dateKey()).slice().sort((a,b)=>(Number(a.done)-Number(b.done))||(Number(b.categoryId==='temp')-Number(a.categoryId==='temp'))||a.time.localeCompare(b.time));
   const done = tasks.filter(t=>t.done).length, pct = tasks.length ? Math.round(done/tasks.length*100) : 0;
   byId('progress-number').textContent = `${pct}%`; byId('progress-copy').textContent = pct===100 && tasks.length ? '今天的你闪闪发光！' : pct ? '继续保持这份小小专注' : '慢慢来，也很厉害'; byId('progress-fill').style.width = `${pct}%`; byId('progress-fill').parentElement.setAttribute('aria-valuenow', pct); byId('schedule-count').textContent = tasks.length ? `今天有 ${tasks.length} 件小事等你完成` : '今天还没有安排哦';
   list.innerHTML = tasks.length ? tasks.map(t => { const c=colorForTask(t); return `<article class="task-card ${t.done?'done':''} ${t.categoryId==='temp'?'temporary-task':''}" style="--card-color:${c.color};--task-tint:${c.tint}" data-id="${t.id}"><button class="check" data-action="toggle-task" aria-label="完成工作"></button><div class="task-copy"><span class="task-name">${escapeHtml(t.name)}</span><span class="task-meta">${getCat(t.categoryId)?.icon || '✨'} ${escapeHtml(getCat(t.categoryId)?.name || '临时工作')}${t.fixed?' · 固定':''}</span></div><span class="task-time">${t.time || '全天'}</span></article>`; }).join('') : `<div class="empty-message">今天还没有工作，添加一件开始吧 ✨</div>`;
@@ -174,7 +182,9 @@ document.addEventListener('click',e=>{const action=e.target.closest('[data-actio
 document.addEventListener('change',e=>{if(e.target.name!=='categoryId')return;const customFields=byId('custom-category-fields'),temporaryFields=byId('temporary-color-fields');if(!customFields||!temporaryFields)return;const isCustom=e.target.value==='custom-category',isTemporary=e.target.value==='temporary';customFields.hidden=!isCustom;temporaryFields.hidden=!isTemporary;customFields.querySelector('input[name="customCategoryName"]').required=isCustom;if(isCustom)customFields.querySelector('input[name="customCategoryName"]').focus();if(isTemporary){const priorColor=latestTemporaryColor(e.target.form?.elements.name?.value||'');const temporaryCategory=getCat('temp');selectColor(Number.isInteger(priorColor)?priorColor:(temporaryCategory?.color??1));byId('temporary-color-hint').textContent=Number.isInteger(priorColor)?'已选中同名临时工作上次使用的颜色':'';}});
 document.addEventListener('input',e=>{if(e.target.name==='customCategoryName'){const category=state.categories.find(item=>item.name===e.target.value.trim());const hint=byId('custom-category-hint');if(category){selectColor(category.color);hint.textContent=`已找到同名类目，已选中「${category.name}」之前的颜色`; }else hint.textContent='';}if(e.target.name==='name'){const categorySelect=e.target.form?.elements.categoryId;if(categorySelect?.value!=='temporary')return;const color=latestTemporaryColor(e.target.value);const hint=byId('temporary-color-hint');if(Number.isInteger(color)){selectColor(color);hint.textContent='已选中同名临时工作上次使用的颜色';}else hint.textContent='';}});
 document.addEventListener('dblclick',e=>{const card=e.target.closest('.task-card');if(!card||e.target.closest('[data-action="toggle-task"]'))return;e.preventDefault();showTaskActions(card.dataset.id);});
-document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));document.querySelectorAll('.report-switch').forEach(b=>b.addEventListener('click',()=>{reportPeriod=b.dataset.reportPeriod;document.querySelectorAll('.report-switch').forEach(x=>x.classList.toggle('active',x===b));renderReport();}));document.querySelectorAll('.calendar-switch-button').forEach(b=>b.addEventListener('click',()=>{calendarPeriod=b.dataset.calendarPeriod;calendarCursor=calendarPeriod==='week'?startDay(new Date()):new Date(new Date().getFullYear(),new Date().getMonth(),1);document.querySelectorAll('.calendar-switch-button').forEach(x=>x.classList.toggle('active',x===b));renderCalendar();}));byId('previous-period').addEventListener('click',()=>{calendarCursor=calendarPeriod==='week'?addDays(calendarCursor,-7):new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()-1,1);renderCalendar();});byId('next-period').addEventListener('click',()=>{calendarCursor=calendarPeriod==='week'?addDays(calendarCursor,7):new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()+1,1);renderCalendar();});byId('current-period').addEventListener('click',()=>{calendarCursor=calendarPeriod==='week'?startDay(new Date()):new Date(new Date().getFullYear(),new Date().getMonth(),1);renderCalendar();});byId('close-modal').addEventListener('click',closeModal);byId('modal').addEventListener('click',e=>{if(e.target===byId('modal'))closeModal();});byId('modal-form').addEventListener('submit',e=>{e.preventDefault();handleForm(e.currentTarget)});byId('cancel-confirmation').addEventListener('click',()=>closeConfirmation(false));byId('accept-confirmation').addEventListener('click',()=>closeConfirmation(true));byId('confirmation').addEventListener('click',e=>{if(e.target===byId('confirmation'))closeConfirmation(false);});
+window.addEventListener('pagehide',save);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')save();});
+document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>{playSound('navigate');switchView(b.dataset.view);}));document.querySelectorAll('.report-switch').forEach(b=>b.addEventListener('click',()=>{reportPeriod=b.dataset.reportPeriod;document.querySelectorAll('.report-switch').forEach(x=>x.classList.toggle('active',x===b));renderReport();}));document.querySelectorAll('.calendar-switch-button').forEach(b=>b.addEventListener('click',()=>{calendarPeriod=b.dataset.calendarPeriod;calendarCursor=calendarPeriod==='week'?startDay(new Date()):new Date(new Date().getFullYear(),new Date().getMonth(),1);document.querySelectorAll('.calendar-switch-button').forEach(x=>x.classList.toggle('active',x===b));renderCalendar();}));byId('previous-period').addEventListener('click',()=>{calendarCursor=calendarPeriod==='week'?addDays(calendarCursor,-7):new Date(calendarCursor.getFullYear(),calendarCursor.getMonth()-1,1);renderCalendar();});byId('next-period').addEventListener('click',()=>{calendarCursor=calendarPeriod==='week'?addDays(calendarCursor,7):new Date(calendarCursor.getFullYear(),new Date().getMonth()+1,1);renderCalendar();});byId('current-period').addEventListener('click',()=>{calendarCursor=calendarPeriod==='week'?startDay(new Date()):new Date(new Date().getFullYear(),new Date().getMonth(),1);renderCalendar();});byId('close-modal').addEventListener('click',closeModal);byId('modal').addEventListener('click',e=>{if(e.target===byId('modal'))closeModal();});byId('modal-form').addEventListener('submit',e=>{e.preventDefault();handleForm(e.currentTarget)});byId('cancel-confirmation').addEventListener('click',()=>closeConfirmation(false));byId('accept-confirmation').addEventListener('click',()=>closeConfirmation(true));byId('confirmation').addEventListener('click',e=>{if(e.target===byId('confirmation'))closeConfirmation(false);});
 renderToday();
 requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => byId('launch-splash')?.classList.add('is-hidden'),120)));
 const runWhenIdle = callback => window.requestIdleCallback ? window.requestIdleCallback(callback,{timeout:1200}) : setTimeout(callback,350);
