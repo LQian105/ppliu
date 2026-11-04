@@ -16,10 +16,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="./style.css" />
-    <style>html,body{background:#fff0f7}#launch-splash{position:fixed;inset:0;z-index:100;display:grid;place-items:center;background:linear-gradient(145deg,#fff0f7,#f2e9ff);opacity:1;transition:opacity .18s ease}#launch-splash.is-hidden{opacity:0;pointer-events:none}#launch-splash img{width:116px;height:116px;object-fit:contain;filter:drop-shadow(0 12px 22px rgba(113,75,117,.18))}</style>
+    <style>html,body{background:#fff0f7}</style>
   </head>
   <body>
-    <div id="launch-splash" aria-hidden="true"><img src="./kuromi-avatar-mobile.png" width="256" height="256" alt="" /></div>
+    <script>if('serviceWorker' in navigator&&window.isSecureContext)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))</script>
     <main class="app-shell showing-today">
       <section id="today" class="view active">
         <header class="topbar">

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pipi-workbench-v9';
+const CACHE_NAME = 'pipi-workbench-v34';
 const APP_ASSETS = [
   './',
   './index.html',
@@ -24,6 +24,15 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).catch(() => caches.match('./index.html')));
+    return;
+  }
+  const url = new URL(event.request.url);
+  const isAppCode = url.origin === self.location.origin && /\.(?:js|css|html|webmanifest)$/.test(url.pathname);
+  if (isAppCode) {
+    event.respondWith(fetch(event.request).then(response => {
+      if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+      return response;
+    }).catch(() => caches.match(event.request)));
     return;
   }
   event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
